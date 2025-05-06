@@ -16,7 +16,7 @@ async def recommend_paths(user=Depends(get_current_user)):
     prompt_text = template.replace("{{ resume_text }}", resume["content"])
 
     messages = [
-        {"role": "system", "content": "You are a helpful career advisor."},
+        {"role": "system", "content": "You are an expert career strategist with up‑to‑the‑minute knowledge of labor‑market trends, compensation data, and emerging skills demands."},
         {"role": "user", "content": prompt_text}
     ]
 

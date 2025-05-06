@@ -20,15 +20,21 @@ async def get_user_from_token(token: str):
         return resp.json() 
     return None
 
-def insert_resume(user_id: str, filename: str, content: str) -> str:
-    resume_id = str(uuid.uuid4())
-    supabase.table("resumes").insert({
-        "id": resume_id,
+def upsert_resume(user_id: str, filename: str, content: str):
+    result = supabase.table("resumes").upsert({
         "user_id": user_id,
         "filename": filename,
         "content": content
-    }).execute()
-    return resume_id
+    }, on_conflict=["user_id"]).execute()
+
+    # Fetch the upserted record
+    data = supabase.table("resumes") \
+        .select("id") \
+        .eq("user_id", user_id) \
+        .single() \
+        .execute()
+    
+    return data.data["id"]
 
 def get_latest_resume_by_user(user_id: str):
     res = supabase.table("resumes") \

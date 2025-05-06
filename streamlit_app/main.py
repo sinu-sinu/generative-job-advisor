@@ -40,8 +40,8 @@ if "user" not in st.session_state:
                 res = supabase_signup(email, password)
 
                 if res.status_code == 200:
-                    # Step 2: Now log in to get token + user info
-                    res = supabase_login(email, password)
+                    st.success("Sign-up successful! Please check your email and verify your address before logging in.")
+                    st.stop()
 
             if res.status_code == 200:
                 data = res.json()
@@ -64,13 +64,10 @@ headers = {
     "Authorization": f"Bearer {st.session_state.token}"
 }
 
-# --- Session Setup ---
-if "resume_id" not in st.session_state:
-    st.session_state.resume_id = None
-
 # --- Upload Resume ---
 st.header("Step 1: Upload Your Resume (PDF)")
 uploaded_file = st.file_uploader("Choose a resume PDF", type=["pdf"])
+st.caption("Note: Uploading a new resume will overwrite your previous one.")
 
 if uploaded_file:
     with st.spinner("Uploading and parsing resume..."):
@@ -80,13 +77,12 @@ if uploaded_file:
             headers=headers
         )
         if response.ok:
-            st.session_state.resume_id = response.json()["resume_id"]
-            st.success("Resume uploaded successfully!")
+            st.success("Resume uploaded successfully! This will replace your previous one.")
         else:
             st.error("Upload failed: " + response.text)
 
 # --- Feature Menu ---
-if st.session_state.resume_id:
+if st.session_state.user:
     st.header("Step 2: Choose a Service")
     choice = st.radio("What would you like help with?", [
         "Career Path Recommendation",
@@ -103,9 +99,16 @@ if st.session_state.resume_id:
                     st.subheader("🎯 AI Suggested Career Paths:")
                     for line in suggestions.split("\n"):
                         if line.strip():
-                            st.markdown(f"- {line.strip()}")
+                            st.markdown(f"{line.strip()}")
                 else:
-                    st.error("Error: " + response.text)
+                    try:
+                        error_message = response.json().get("error")
+                        if error_message:
+                            st.error("Error: " + error_message)
+                        else:
+                            st.error("Unexpected error: " + response.text)
+                    except Exception:
+                        st.error("Error: " + response.text)
 
     elif choice == "Resume Feedback":
         if st.button("🛠 Get Resume Feedback"):
@@ -116,7 +119,14 @@ if st.session_state.resume_id:
                     st.subheader("📝 Line-by-Line Feedback:")
                     st.markdown(feedback)
                 else:
-                    st.error("Error: " + response.text)
+                    try:
+                        error_message = response.json().get("error")
+                        if error_message:
+                            st.error("Error: " + error_message)
+                        else:
+                            st.error("Unexpected error: " + response.text)
+                    except Exception:
+                        st.error("Error: " + response.text)
 
     elif choice == "Mock Interview Q&A":
         job_title = st.text_input("Enter a target role (e.g. Data Scientist)")
