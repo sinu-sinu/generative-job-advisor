@@ -3,7 +3,7 @@ from app.services.groq_service import chat_completion
 from app.prompts.loader import load_prompt
 from app.api.deps import get_current_user
 from app.services.supabase_client import log_mock_interview
-
+import re
 router = APIRouter()
 
 @router.post("/question")
@@ -27,9 +27,13 @@ async def critique_answer(data: dict, user=Depends(get_current_user)):
     ]
     result = await chat_completion(messages)
 
-    # Extract score (rudimentary)
-    score_line = [line for line in result.splitlines() if "Score:" in line]
-    score = int(score_line[0].split(":")[-1].strip()) if score_line else None
+    # Extract score safely using regex
+    score_line = next((line for line in result.splitlines() if "Score:" in line), None)
+    score = None
+    if score_line:
+        match = re.search(r"\b(\d+)\s*/\s*\d+", score_line)
+        if match:
+            score = int(match.group(1))
 
     # Log in Supabase
     log_mock_interview(user_id=user["id"], question=data["question"], answer=data["answer"], critique=result, score=score)

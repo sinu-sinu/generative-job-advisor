@@ -9,11 +9,15 @@ router = APIRouter()
 @router.post("/feedback")
 async def get_resume_feedback(user=Depends(get_current_user)):
     resume = get_latest_resume_by_user(user["id"])
+
+    if not resume or not resume.get("content"):
+        return {"error": "No resume content found. Please upload your resume first."}
+
     template = load_prompt("resume_feedback.md")
-    prompt_text = template.replace("{{ resume_content }}", resume["content"])
+    prompt_text = template.replace("{{ resume_text }}", resume["content"])
 
     messages = [
-        {"role": "system", "content": "You are a resume expert."},
+        {"role": "system", "content": "You are a resume expert who provides line-by-line critique and improvement suggestions."},
         {"role": "user", "content": prompt_text}
     ]
 
