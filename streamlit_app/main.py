@@ -18,6 +18,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ── Streamlit page setup ─────────────────────────────────────────
 st.set_page_config(page_title="Generative AI Job Advisor", layout="centered")
 st.title("🧠 Generative AI Job Advisor")
+
 # ----------------------------------------------------------------
 # 1. ‑‑‑‑ Authentication helpers
 # ----------------------------------------------------------------
@@ -79,30 +80,54 @@ def call_backend(path: str, method: str = "POST", **kwargs):
 # 3. ‑‑‑‑ Login / Sign‑up UI (form = atomic submit)
 # ----------------------------------------------------------------
 if "token" not in st.session_state:
-    with st.form("auth_form"):
-        st.subheader("🔐 Access Your Advisor")
-        st.caption("Sign up or log in to access personalized career services.")
-        auth_mode = st.radio("Choose mode", ["Login", "Sign Up"], horizontal=True, help="Select 'Sign Up' if you don't have an account.")
-        email = st.text_input("Email", help="Enter your email address.")
-        pwd = st.text_input("Password", type="password", help="Enter your password.")
-        submitted = st.form_submit_button("Submit")
+    if "auth_mode" not in st.session_state:
+        st.session_state["auth_mode"] = "Login"  # default mode
+
+    # -- Mode toggle buttons
+    st.subheader("🔐 Unlock Your Career Advisor")
+    st.caption("Log in or sign up to access personalized AI-powered career guidance.")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Sign In", use_container_width=True):
+            st.session_state["auth_mode"] = "Login"
+    with col2:
+        if st.button("Create Account", use_container_width=True):
+            st.session_state["auth_mode"] = "Sign Up"
+
+    # -- Container for both forms (only one is visible)
+    with st.form("auth_form", border=True):
+        mode = st.session_state["auth_mode"]
+        st.markdown(f"**{mode}** to continue")
+
+        email = st.text_input("Email", key=f"email_{mode}")
+        pwd = st.text_input("Password", type="password", key=f"pwd_{mode}")
+
+        submitted = st.form_submit_button("Continue")
         if submitted and email and pwd:
-            ok, msg = auth_with_supabase(email, pwd, signup=(auth_mode == "Sign Up"))
-            if ok and auth_mode == "Login":
+            ok, msg = auth_with_supabase(email, pwd, signup=(mode == "Sign Up"))
+            if ok and mode == "Login":
                 st.session_state.token = msg
                 st.session_state.token_time = datetime.now()
-                st.success("Logged in! Redirecting to dashboard...")
+                st.success("Logged in successfully! Taking you to your dashboard...")
                 st.rerun()
             elif ok:
-                st.success(msg)
+                st.success("🎉 Account created! Please check your email to verify and then log in.")
             else:
-                st.error(f"{auth_mode} failed: {msg}. Please check your credentials or try again.")
+                # Triangulate common errors
+                if "invalid login" in msg.lower() or "user not found" in msg.lower():
+                    st.error("Email not found. New here? Try creating an account.")
+                elif "password" in msg.lower():
+                    st.error("Incorrect password. Please try again or click 'Forgot Password?' if available.")
+                elif "already registered" in msg.lower():
+                    st.error("Welcome back! An account with this email already exists. Please sign in.")
+                else:
+                    st.error(f"⚠️ {mode} failed. Error: {msg}")
     st.stop()
 
 # ----------------------------------------------------------------
 # 4. ‑‑‑‑ Sidebar (logout)
 # ----------------------------------------------------------------
-st.sidebar.success("Logged in")
+st.sidebar.success("You're logged in!")
 if st.sidebar.button("Logout"):
     st.session_state.clear()
     st.rerun()
@@ -110,12 +135,12 @@ if st.sidebar.button("Logout"):
 # ----------------------------------------------------------------
 # 5. ‑‑‑‑ Resume upload with safety checks
 # ----------------------------------------------------------------
-st.header("Upload Your Resume (PDF)")
-uploaded_file = st.file_uploader("Choose your PDF", type=["pdf"], help="Only PDF files up to 5MB are accepted.")
-st.caption("Uploading a new resume will overwrite your previous one. You can view or replace your current resume below.")
+st.header("Upload Your Resume (PDF)")
+uploaded_file = st.file_uploader("Select Your PDF Resume", type=["pdf"], help="Max file size: 5MB. Ensure it's a PDF for best results.")
+st.caption("Tip: Uploading a new resume replaces the current one. You can always update it here.")
 
 if "resume_uploaded_name" in st.session_state:
-    st.info(f"Current resume: {st.session_state['resume_uploaded_name']}")
+    st.info(f"Current resume on file: **{st.session_state['resume_uploaded_name']}**")
 
 def is_pdf(file: io.BytesIO) -> bool:
     mime, _ = mimetypes.guess_type(uploaded_file.name)
@@ -123,56 +148,54 @@ def is_pdf(file: io.BytesIO) -> bool:
 
 if uploaded_file:
     if uploaded_file.size > MAX_FILE_SIZE:
-        st.error("File too large (> 5 MB).")
+        st.error("⚠️ File exceeds 5MB limit. Please upload a smaller PDF.")
     elif not is_pdf(uploaded_file):
-        st.error("File doesn’t look like a PDF.")
+        st.error("⚠️ Oops! This doesn't seem to be a PDF. Please upload a valid PDF file.")
     else:
-        with st.spinner("Uploading & parsing…"):
+        with st.spinner("🚀 Uploading & analyzing your resume..."):
             resp = call_backend(
                 "resume/upload",
                 files={"file": (uploaded_file.name, uploaded_file.read(), "application/pdf")},
             )
             if resp:
                 st.session_state["resume_uploaded_name"] = uploaded_file.name
-                st.success("Resume uploaded successfully! You can now proceed to the next step.")
+                st.success("Resume uploaded! You're all set to explore the features below.")
 
 # ----------------------------------------------------------------
 # 6. ‑‑‑‑ Feature menu
 # ----------------------------------------------------------------
-st.header("Choose a Service")
-st.caption("Select a service below and follow the prompts. Each service provides tailored guidance.")
-choice = st.radio(
-    "How can I help?",
-    ["Career Path Recommendation", "Resume Feedback", "Mock Interview Q&A"],
-    help="Pick a service to get started."
-)
+st.header("✨ Explore Our AI Services")
+st.caption("Pick a service to get started. Our AI will provide personalized insights based on your resume.")
+
+tab_titles = ["🧭 Career Path Finder", "📝 Resume Reviewer", "💬 Mock Interview Practice"]
+tab1, tab2, tab3 = st.tabs(tab_titles)
 
 # 6‑A  •  Career paths ---------------------------------------------------------
-if choice == "Career Path Recommendation":
-    if st.button("🔍 Get Career Suggestions", help="Get AI-powered recommendations based on your resume."):
-        with st.spinner("Consulting Groq AI…"):
+with tab1:
+    if st.button("🔍 Discover Career Paths"):
+        with st.spinner("🧠 Analyzing possibilities with Groq AI..."):
             data = call_backend("career/recommend")
             if data:
                 st.session_state["career_suggestions"] = data["recommendations"]
 
     if suggestions := st.session_state.get("career_suggestions"):
-        st.subheader("🎯 AI‑suggested career paths")
+        st.subheader("🎯 Your AI-Powered Career Roadmap")
         st.markdown(suggestions)
 
 # 6‑B  •  Resume feedback ------------------------------------------------------
-elif choice == "Resume Feedback":
-    if st.button("🛠 Get Resume Feedback", help="Receive detailed, line-by-line feedback on your uploaded resume."):
-        with st.spinner("Reviewing your resume…"):
+with tab2:
+    if st.button("🛠 Improve Your Resume"):
+        with st.spinner("🔎 Reviewing your resume line by line..."):
             data = call_backend("resume_feedback/feedback")
             if data:
                 st.session_state["resume_feedback"] = data["feedback"]
 
     if feedback := st.session_state.get("resume_feedback"):
-        st.subheader("📝 Line‑by‑line feedback")
+        st.subheader("📝 Detailed Resume Analysis")
         st.markdown(feedback)
 
 # 6‑C  •  Mock interview -------------------------------------------------------
-else:
+with tab3:
     st.subheader("🎤 Practice an Interview")
     job_title = st.text_input("Target role (e.g. Data Scientist)", help="Specify the job title you want to practice for.")
     if st.button("🎤 Generate Question", help="Get a realistic interview question for your chosen role.") and job_title.strip():
@@ -185,7 +208,7 @@ else:
         st.markdown(f"**🗨️ Interview Question:** {q}")
         answer = st.text_area("Your answer", value=st.session_state.get("interview_a", ""), help="Type your answer here for AI critique.")
         st.session_state["interview_a"] = answer
-        if st.button("📊 Submit for critique", help="Get instant feedback and a score on your answer.") and answer.strip():
+        if st.button("📊 Submit for critique") and answer.strip():
             data = call_backend(
                 "interview/critique",
                 json={"question": q, "answer": answer},
